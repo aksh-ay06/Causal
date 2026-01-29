@@ -31,17 +31,17 @@ def balance_table(
 
     Returns a DataFrame with columns: covariate, smd_unadjusted, (smd_adjusted).
     """
-    treated = df[treatment_col] == 1
+    treated_mask = (df[treatment_col] == 1).values
     rows = []
     for cov in covariates:
-        t_vals = df.loc[treated, cov].values.astype(float)
-        c_vals = df.loc[~treated, cov].values.astype(float)
+        t_vals = df.loc[treated_mask, cov].values.astype(float)
+        c_vals = df.loc[~treated_mask, cov].values.astype(float)
         smd_raw = compute_smd(t_vals, c_vals)
         row = {"covariate": cov, "smd_unadjusted": round(smd_raw, 4)}
 
         if weights is not None:
-            w_t = weights[treated]
-            w_c = weights[~treated]
+            w_t = weights[treated_mask]
+            w_c = weights[~treated_mask]
             wm_t = np.average(t_vals, weights=w_t)
             wm_c = np.average(c_vals, weights=w_c)
             wv_t = np.average((t_vals - wm_t) ** 2, weights=w_t)

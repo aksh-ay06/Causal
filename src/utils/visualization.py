@@ -116,7 +116,7 @@ def plot_covariate_distributions(
         sns.kdeplot(data=df, x=cov, hue=treatment_col, ax=axes[i], fill=True, common_norm=False)
         axes[i].set_title(cov)
 
-    for j in range(i + 1, len(axes)):
+    for j in range(len(covariates), len(axes)):
         axes[j].set_visible(False)
 
     plt.suptitle("Covariate Distributions by Treatment Group", fontsize=14)

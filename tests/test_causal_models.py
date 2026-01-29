@@ -8,6 +8,7 @@ from src.preprocessing.data_loader import generate_synthetic_brfss
 from src.preprocessing.cleaning import clean_data
 from src.causal_models.propensity_score import PropensityScoreMatching
 from src.causal_models.ipw import IPWEstimator
+from src.causal_models.doubly_robust import DoublyRobustEstimator
 from src.utils.config import TRUE_ATE_HEALTH
 
 
@@ -16,7 +17,7 @@ def prepared_data():
     """Shared synthetic dataset for all model tests."""
     df = generate_synthetic_brfss(n=5000, seed=42)
     df = clean_data(df)
-    covs = ["age", "female", "education", "income", "race_black", "race_hispanic", "race_other"]
+    covs = ["age", "female", "education", "income", "race_hispanic", "race_other", "race_white"]
     covs = [c for c in covs if c in df.columns]
     X = df[covs].values
     T = df["smoking"].values
@@ -66,6 +67,16 @@ class TestPSM:
         result = psm.estimate_ate(Y, T, n_bootstrap=100)
         assert result["ate"] < 0, "Smoking ATE on health should be negative"
 
+    def test_att_has_correct_keys(self, prepared_data):
+        X, T, Y, _ = prepared_data
+        psm = PropensityScoreMatching(seed=42)
+        psm.fit(X, T)
+        psm.match(T)
+        result = psm.estimate_att(Y, T, n_bootstrap=100)
+        assert "att" in result
+        assert "ci_lower" in result
+        assert "ci_upper" in result
+
 
 # ── IPW ────────────────────────────────────────────────────────────────────────
 
@@ -111,6 +122,51 @@ class TestIPW:
         assert "ci_upper" in result
 
 
+# ── Doubly Robust ──────────────────────────────────────────────────────────────
+
+class TestDR:
+    def test_fit_produces_scores(self, prepared_data):
+        X, T, Y, _ = prepared_data
+        dr = DoublyRobustEstimator(n_folds=3, seed=42)
+        dr.fit(Y, T, X)
+        assert dr._scores is not None
+        assert len(dr._scores) == len(T)
+
+    def test_ate_has_correct_keys(self, prepared_data):
+        X, T, Y, _ = prepared_data
+        dr = DoublyRobustEstimator(n_folds=3, seed=42)
+        dr.fit(Y, T, X)
+        result = dr.estimate_ate()
+        assert "ate" in result
+        assert "ci_lower" in result
+        assert "ci_upper" in result
+        assert "se" in result
+
+    def test_ate_direction(self, prepared_data):
+        """Smoking should have a negative effect on health."""
+        X, T, Y, _ = prepared_data
+        dr = DoublyRobustEstimator(n_folds=3, seed=42)
+        dr.fit(Y, T, X)
+        result = dr.estimate_ate()
+        assert result["ate"] < 0, "Smoking ATE on health should be negative"
+
+    def test_cate_shape(self, prepared_data):
+        X, T, Y, _ = prepared_data
+        dr = DoublyRobustEstimator(n_folds=3, seed=42)
+        dr.fit(Y, T, X)
+        cate = dr.estimate_cate()
+        assert len(cate) == len(T)
+
+    def test_att_has_correct_keys(self, prepared_data):
+        X, T, Y, _ = prepared_data
+        dr = DoublyRobustEstimator(n_folds=3, seed=42)
+        dr.fit(Y, T, X)
+        result = dr.estimate_att()
+        assert "att" in result
+        assert "ci_lower" in result
+        assert "ci_upper" in result
+
+
 # ── Estimate quality (loose tolerance) ─────────────────────────────────────────
 
 class TestEstimateQuality:
@@ -133,4 +189,13 @@ class TestEstimateQuality:
         result = ipw.estimate_ate(Y, T, n_bootstrap=200)
         assert abs(result["ate"] - TRUE_ATE_HEALTH) < 3.0, (
             f"IPW ATE {result['ate']:.2f} too far from true {TRUE_ATE_HEALTH}"
+        )
+
+    def test_dr_within_tolerance(self, prepared_data):
+        X, T, Y, _ = prepared_data
+        dr = DoublyRobustEstimator(n_folds=3, seed=42)
+        dr.fit(Y, T, X)
+        result = dr.estimate_ate()
+        assert abs(result["ate"] - TRUE_ATE_HEALTH) < 3.0, (
+            f"DR ATE {result['ate']:.2f} too far from true {TRUE_ATE_HEALTH}"
         )

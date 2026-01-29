@@ -20,9 +20,9 @@ OUTCOME_CANCER = "cancer"
 COVARIATE_COLS = [
     "age",
     "female",
-    "race_black",
     "race_hispanic",
     "race_other",
+    "race_white",
     "education",
     "income",
     "state_id",

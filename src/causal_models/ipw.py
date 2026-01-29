@@ -5,6 +5,7 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 from sklearn.linear_model import LogisticRegression
+from sklearn.preprocessing import StandardScaler
 
 from src.utils.config import RANDOM_SEED
 
@@ -27,6 +28,8 @@ class IPWEstimator:
         self.trim_quantile = trim_quantile
         self.seed = seed
         self._ps_model: LogisticRegression | None = None
+        self._scaler: StandardScaler | None = None
+        self._X: np.ndarray | None = None
         self.propensity_scores_: np.ndarray | None = None
         self.weights_: np.ndarray | None = None
 
@@ -37,11 +40,14 @@ class IPWEstimator:
         treatment: np.ndarray | pd.Series,
     ) -> "IPWEstimator":
         """Estimate propensity scores and compute IPW weights."""
+        self._X = np.asarray(X, dtype=float)
+        self._scaler = StandardScaler()
+        X_scaled = self._scaler.fit_transform(self._X)
         self._ps_model = LogisticRegression(
             max_iter=1000, random_state=self.seed, solver="lbfgs"
         )
-        self._ps_model.fit(X, treatment)
-        ps = self._ps_model.predict_proba(X)[:, 1]
+        self._ps_model.fit(X_scaled, treatment)
+        ps = self._ps_model.predict_proba(X_scaled)[:, 1]
         ps = self._trim(ps)
         self.propensity_scores_ = ps
 
@@ -60,7 +66,7 @@ class IPWEstimator:
         self,
         outcome: np.ndarray | pd.Series,
         treatment: np.ndarray | pd.Series,
-        n_bootstrap: int = 500,
+        n_bootstrap: int = 200,
     ) -> dict:
         """Horvitz–Thompson ATE estimator with bootstrap CI."""
         outcome = np.asarray(outcome, dtype=float)
@@ -69,13 +75,25 @@ class IPWEstimator:
 
         ate = self._ht_ate(outcome, treatment, ps)
 
-        # Bootstrap CI
+        if n_bootstrap == 0:
+            return {"ate": float(ate), "ci_lower": np.nan, "ci_upper": np.nan}
+
+        # Bootstrap CI – re-estimate propensity scores on each resample
         rng = np.random.default_rng(self.seed)
         n = len(outcome)
+        X_arr = self._X
         boot_ates = []
         for _ in range(n_bootstrap):
             idx = rng.integers(0, n, n)
-            boot_ates.append(self._ht_ate(outcome[idx], treatment[idx], ps[idx]))
+            X_b, T_b, Y_b = X_arr[idx], treatment[idx], outcome[idx]
+            scaler_b = StandardScaler()
+            X_bs = scaler_b.fit_transform(X_b)
+            ps_model_b = LogisticRegression(
+                max_iter=1000, random_state=self.seed, solver="lbfgs"
+            )
+            ps_model_b.fit(X_bs, T_b)
+            ps_b = self._trim(ps_model_b.predict_proba(X_bs)[:, 1])
+            boot_ates.append(self._ht_ate(Y_b, T_b, ps_b))
         ci_lower = float(np.percentile(boot_ates, 2.5))
         ci_upper = float(np.percentile(boot_ates, 97.5))
 
@@ -85,7 +103,7 @@ class IPWEstimator:
         self,
         outcome: np.ndarray | pd.Series,
         treatment: np.ndarray | pd.Series,
-        n_bootstrap: int = 500,
+        n_bootstrap: int = 200,
     ) -> dict:
         """ATT via IPW (weight the controls by ps/(1-ps))."""
         outcome = np.asarray(outcome, dtype=float)
@@ -94,12 +112,25 @@ class IPWEstimator:
 
         att = self._att(outcome, treatment, ps)
 
+        if n_bootstrap == 0:
+            return {"att": float(att), "ci_lower": np.nan, "ci_upper": np.nan}
+
+        # Bootstrap CI – re-estimate propensity scores on each resample
         rng = np.random.default_rng(self.seed)
         n = len(outcome)
+        X_arr = self._X
         boot_atts = []
         for _ in range(n_bootstrap):
             idx = rng.integers(0, n, n)
-            boot_atts.append(self._att(outcome[idx], treatment[idx], ps[idx]))
+            X_b, T_b, Y_b = X_arr[idx], treatment[idx], outcome[idx]
+            scaler_b = StandardScaler()
+            X_bs = scaler_b.fit_transform(X_b)
+            ps_model_b = LogisticRegression(
+                max_iter=1000, random_state=self.seed, solver="lbfgs"
+            )
+            ps_model_b.fit(X_bs, T_b)
+            ps_b = self._trim(ps_model_b.predict_proba(X_bs)[:, 1])
+            boot_atts.append(self._att(Y_b, T_b, ps_b))
         ci_lower = float(np.percentile(boot_atts, 2.5))
         ci_upper = float(np.percentile(boot_atts, 97.5))
 

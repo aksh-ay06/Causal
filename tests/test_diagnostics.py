@@ -1,5 +1,8 @@
 """Tests for diagnostic utilities."""
 
+import matplotlib
+matplotlib.use("Agg")
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -8,8 +11,9 @@ from src.preprocessing.data_loader import generate_synthetic_brfss
 from src.preprocessing.cleaning import clean_data
 from src.diagnostics.balance import compute_smd, balance_table, assess_overlap
 from src.diagnostics.sensitivity import rosenbaum_bounds, compute_e_value
-from src.diagnostics.placebo import negative_control_test
+from src.diagnostics.placebo import negative_control_test, placebo_treatment_test
 from src.causal_models.propensity_score import PropensityScoreMatching
+from src.utils.visualization import plot_treatment_effects, plot_forest
 
 
 @pytest.fixture(scope="module")
@@ -65,7 +69,7 @@ class TestSensitivity:
         assert "upper_p" in bounds[0]
 
     def test_gamma_1_most_significant(self, data_and_model):
-        """At Γ=1 (no hidden bias), the p‑value should be smallest."""
+        """At Gamma=1 (no hidden bias), the p-value should be smallest."""
         _, _, _, T, Y, psm = data_and_model
         t_idx, c_idx = psm.matched_indices_
         bounds = rosenbaum_bounds(Y[t_idx], Y[c_idx])
@@ -91,3 +95,36 @@ class TestPlacebo:
         )
         assert "negative_control_ate" in result
         assert "covers_zero" in result
+        assert result["covers_zero"]
+
+    def test_placebo_treatment_structure(self, data_and_model):
+        """Placebo test with permuted treatment should return expected keys."""
+        _, _, X, _, Y, _ = data_and_model
+        T = np.random.default_rng(42).binomial(1, 0.3, len(Y))
+        result = placebo_treatment_test(
+            X, Y, T, PropensityScoreMatching, n_permutations=10, seed=42,
+        )
+        assert "real_ate" in result
+        assert "placebo_mean" in result
+        assert "placebo_std" in result
+        assert "p_value" in result
+        assert "n_permutations" in result
+        assert result["n_permutations"] <= 10
+
+
+# ── Visualization smoke tests ─────────────────────────────────────────────────
+
+class TestVisualization:
+    def test_plot_treatment_effects_runs(self):
+        results = {
+            "PSM": {"ate": -4.5, "ci_lower": -6.0, "ci_upper": -3.0},
+            "IPW": {"ate": -5.0, "ci_lower": -6.5, "ci_upper": -3.5},
+        }
+        plot_treatment_effects(results, true_effect=-5.0, save=False)
+
+    def test_plot_forest_runs(self):
+        results = {
+            "PSM": {"ate": -4.5, "ci_lower": -6.0, "ci_upper": -3.0},
+            "IPW": {"ate": -5.0, "ci_lower": -6.5, "ci_upper": -3.5},
+        }
+        plot_forest(results, true_effect=-5.0, save=False)

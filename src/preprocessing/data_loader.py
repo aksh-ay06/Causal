@@ -2,6 +2,7 @@
 
 import numpy as np
 import pandas as pd
+from scipy.special import expit as _expit
 
 from src.utils.config import (
     DEFAULT_N_SAMPLES,
@@ -10,10 +11,6 @@ from src.utils.config import (
     TRUE_ATE_CANCER_LOGODDS,
     TRUE_ATE_HEALTH,
 )
-
-
-def _expit(x: np.ndarray) -> np.ndarray:
-    return 1.0 / (1.0 + np.exp(-x))
 
 
 def generate_synthetic_brfss(

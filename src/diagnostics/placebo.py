@@ -33,12 +33,12 @@ def placebo_treatment_test(
     outcome_arr = np.asarray(outcome)
     treatment_arr = np.asarray(real_treatment)
 
-    # Real ATE
+    # Real ATE (point estimate only — no bootstrap CI needed)
     est = estimator_cls(seed=seed)
     est.fit(X_arr, treatment_arr)
     if hasattr(est, "match"):
         est.match(treatment_arr)
-    real_result = est.estimate_ate(outcome_arr, treatment_arr)
+    real_result = est.estimate_ate(outcome_arr, treatment_arr, n_bootstrap=0)
     real_ate = real_result["ate"]
 
     # Placebo distribution
@@ -51,7 +51,7 @@ def placebo_treatment_test(
         if hasattr(est_p, "match"):
             est_p.match(fake_treatment)
         try:
-            res = est_p.estimate_ate(outcome_arr, fake_treatment)
+            res = est_p.estimate_ate(outcome_arr, fake_treatment, n_bootstrap=0)
             placebo_ates.append(res["ate"])
         except Exception:
             continue

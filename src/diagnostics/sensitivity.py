@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import matplotlib.pyplot as plt
 import numpy as np
+from scipy.stats import norm
 
 from src.utils.config import FIGURES_DIR
 
@@ -34,7 +35,11 @@ def rosenbaum_bounds(
         gamma_range = np.arange(1.0, 3.25, 0.25)
 
     diff = np.asarray(treated_outcomes, dtype=float) - np.asarray(control_outcomes, dtype=float)
-    n = len(diff)
+    # Align sign so that we always test positive ranks (standard Rosenbaum formulation).
+    # If the observed effect is negative, flip the sign of differences.
+    if diff.mean() < 0:
+        diff = -diff
+
     abs_diff = np.abs(diff)
     ranks = np.argsort(np.argsort(abs_diff)) + 1.0  # average‑ranks approximation
 
@@ -43,7 +48,7 @@ def rosenbaum_bounds(
 
     results = []
     for gamma in gamma_range:
-        # Under maximum bias, prob that a treated unit has the higher outcome
+        # Worst‑case upper bound: probability that a pair is positive
         p_plus = gamma / (1 + gamma)
         # Expectation and variance of T under this worst case
         E_T = float(np.sum(ranks * p_plus))
@@ -53,9 +58,7 @@ def rosenbaum_bounds(
             continue
         z = (T_obs - E_T) / np.sqrt(V_T)
         # One‑sided upper p‑value (standard normal approximation)
-        from scipy.stats import norm
-
-        upper_p = float(1 - norm.cdf(z))
+        upper_p = float(norm.sf(z))
         results.append({"gamma": float(gamma), "upper_p": upper_p})
 
     return results

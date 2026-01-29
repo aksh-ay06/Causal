@@ -44,7 +44,6 @@ class DoublyRobustEstimator:
         outcome: np.ndarray | pd.Series,
         treatment: np.ndarray | pd.Series,
         X: np.ndarray | pd.DataFrame,
-        W: np.ndarray | pd.DataFrame | None = None,
     ) -> "DoublyRobustEstimator":
         """Fit nuisance models with K-fold cross-fitting.
 
@@ -53,7 +52,6 @@ class DoublyRobustEstimator:
         outcome : array (Y)
         treatment : array (T, binary)
         X : array (covariates / effect modifiers)
-        W : ignored (kept for API compatibility)
         """
         Y = np.asarray(outcome, dtype=float)
         T = np.asarray(treatment, dtype=float)
@@ -145,5 +143,5 @@ class DoublyRobustEstimator:
         self,
         X: np.ndarray | pd.DataFrame | None = None,
     ) -> np.ndarray:
-        """Individual-level CATE via mu1(X) - mu0(X) from the fitted models."""
-        return self._mu1 - self._mu0
+        """Individual-level CATE using doubly-robust AIPW scores."""
+        return self._scores
